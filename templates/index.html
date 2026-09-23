@@ -1,0 +1,54 @@
+cd C:\Users\user\Desktop\traffic_system
+git init     const statusBadge = document.getElementById("statusBadge");
+            const probText = document.getElementById("probText");
+            const advisoryText = document.getElementById("advisoryText");
+            const alternativeText = document.getElementById('alternativeText');
+            const trafficLight = document.getElementById('trafficLight');
+            const peakWindowCard = document.getElementById('peakWindowCard');
+            const morningWindow = document.getElementById('morningWindow');
+            const eveningWindow = document.getElementById('eveningWindow');
+            const optimalWindow = document.getElementById('optimalWindow');
+
+            resultBox.style.display = "block";
+            
+            if (result.prediction === "PEAK TRAFFIC PERIOD") {
+                statusBadge.className = "badge badge-peak p-2 me-2";
+            } else {
+                statusBadge.className = "badge badge-nonpeak p-2 me-2";
+            }
+
+            statusBadge.innerText = result.prediction;
+            probText.innerText = `Peak Probability: ${result.peak_probability}`;
+            advisoryText.innerText = result.advisory;
+
+            // Alternative suggestion
+            if (result.alternative_suggestion) {
+                alternativeText.innerText = result.alternative_suggestion;
+                alternativeText.style.display = 'block';
+            } else {
+                alternativeText.innerText = '';
+                alternativeText.style.display = 'none';
+            }
+
+            // Peak window card
+            if (result.peak_windows && Object.keys(result.peak_windows).length > 0) {
+                morningWindow.innerText = result.peak_windows.morning || '';
+                eveningWindow.innerText = result.peak_windows.evening || '';
+                optimalWindow.innerText = result.peak_windows.optimal || '';
+                peakWindowCard.style.display = 'block';
+            } else {
+                peakWindowCard.style.display = 'none';
+            }
+
+            // Traffic light indicator
+            if (result.traffic_light === 'red') {
+                trafficLight.innerText = '🔴';
+            } else {
+                trafficLight.innerText = '🔵';
+            }
+
+        });
+
+    </script>
+</body>
+</html>

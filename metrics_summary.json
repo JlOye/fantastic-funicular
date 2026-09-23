@@ -1,0 +1,35 @@
+{
+  "models": {
+    "Decision Tree": {
+      "accuracy": 99.731,
+      "precision": 99.462,
+      "recall": 99.462,
+      "f1_score": 99.462
+    },
+    "Random Forest": {
+      "accuracy": 99.866,
+      "precision": 100.0,
+      "recall": 99.462,
+      "f1_score": 99.73
+    },
+    "Gradient Boosting": {
+      "accuracy": 99.731,
+      "precision": 99.462,
+      "recall": 99.462,
+      "f1_score": 99.462
+    },
+    "Support Vector Machine": {
+      "accuracy": 97.984,
+      "precision": 97.765,
+      "recall": 94.086,
+      "f1_score": 95.89
+    },
+    "Neural Network (MLP)": {
+      "accuracy": 98.656,
+      "precision": 98.352,
+      "recall": 96.237,
+      "f1_score": 97.283
+    }
+  },
+  "best_model": "Random Forest"
+}
