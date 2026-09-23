@@ -1,5 +1,553 @@
-cd C:\Users\user\Desktop\traffic_system
-git init     const statusBadge = document.getElementById("statusBadge");
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ibadan Peak Traffic Prediction System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Times New Roman', Times, serif; }
+        .card { border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .badge-peak { background-color: #dc3545; font-size: 1.1rem; }
+        .badge-nonpeak { background-color: #198754; font-size: 1.1rem; }
+        #trafficMap { height: 430px; border-radius: 8px; }
+        .legend-swatch {
+            display: inline-block;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .legend-lower { background-color: #0d6efd; }
+        .legend-higher { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card p-4">
+                    <h3 class="text-center fw-bold mb-3">Peak Traffic Prediction System</h3>
+                    <p class="text-center text-muted">A Machine Learning Software Application for Ibadan Urban Corridors</p>
+                    <hr>
+                    <div class="d-flex justify-content-end mb-2">
+                        <button id="metricsBtn" class="btn btn-outline-secondary btn-sm">Model Performance & Metrics</button>
+                    </div>
+                    
+                    <form id="predictionForm">
+                        <div class="mb-3">
+                            <label for="corridor" class="form-label fw-bold">Select Traffic Corridor / Intersection:</label>
+                            <select class="form-select" id="corridor" required>
+                                <option value="Challenge">Challenge Junction / Ring Road Axis</option>
+                                <option value="Iwo Road">Iwo Road Interchange Corridor</option>
+                                <option value="Bodija">Bodija / Secretariat Road Network</option>
+                                <option value="Ojoo">Ojoo Interchange Corridor</option>
+                                <option value="Mokola">Mokola Roundabout & Junction</option>
+                            </select>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="day" class="form-label fw-bold">Day of the Week:</label>
+                                <select class="form-select" id="day" required>
+                                    <option value="0">Monday</option>
+                                    <option value="1">Tuesday</option>
+                                    <option value="2">Wednesday</option>
+                                    <option value="3">Thursday</option>
+                                    <option value="4">Friday</option>
+                                    <option value="5">Saturday</option>
+                                    <option value="6">Sunday</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="hour12" class="form-label fw-bold">Travel Hour (12-hour):</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="hour12" min="1" max="12" value="8" required title="Enter hour 1–12, then choose AM/PM">
+                                    <select class="form-select" id="ampm" style="max-width: 120px;">
+                                        <option value="AM">AM</option>
+                                        <option value="PM">PM</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="weather" class="form-label fw-bold">Weather:</label>
+                                <select class="form-select" id="weather" required>
+                                    <option value="Clear">Clear</option>
+                                    <option value="Rain">Rain</option>
+                                    <option value="Heavy Rain">Heavy Rain</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="road_type" class="form-label fw-bold">Road Type:</label>
+                                <select class="form-select" id="road_type" required>
+                                    <option value="Urban">Urban</option>
+                                    <option value="Highway">Highway</option>
+                                    <option value="Junction">Junction</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="location_zone" class="form-label fw-bold">Location Zone:</label>
+                                <select class="form-select" id="location_zone" required>
+                                    <option value="Central">Central</option>
+                                    <option value="East">East</option>
+                                    <option value="West">West</option>
+                                    <option value="North">North</option>
+                                    <option value="South">South</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 fw-bold py-2 mt-2">Predict Peak Status</button>
+                    </form>
+
+                    <!-- Prediction Results Box -->
+                    <div id="resultBox" class="mt-4 p-3 border rounded" style="display: none;">
+                        <h5 class="fw-bold mb-2">Prediction Result:</h5>
+                        <div class="d-flex align-items-center mb-2">
+                            <span id="statusBadge" class="badge p-2 me-2"></span>
+                            <span id="trafficLight" style="font-size:1.2rem; margin-right:8px;"></span>
+                            <span class="text-muted fw-bold" id="probText"></span>
+                        </div>
+                        <p class="mb-0" id="advisoryText"></p>
+                        <p class="mb-0 mt-2 text-primary" id="alternativeText" style="font-weight:600;"></p>
+
+                        <div id="peakWindowCard" class="mt-3 p-3 border rounded" style="display:none; background:#f1f5f9;">
+                            <h6 class="fw-bold">Peak Hour Window Breakdown</h6>
+                            <p class="mb-1"><strong>Morning Rush Window:</strong> <span id="morningWindow"></span></p>
+                            <p class="mb-1"><strong>Evening Rush Window:</strong> <span id="eveningWindow"></span></p>
+                            <p class="mb-0"><strong>Optimal Travel Window:</strong> <span id="optimalWindow"></span></p>
+                        </div>
+                    </div>
+                    
+                    <!-- Prediction History Panel -->
+                    <div class="mt-4 p-3 border rounded" aria-labelledby="historyHeading">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 id="historyHeading" class="fw-bold mb-0">Recent Predictions</h5>
+                            <button type="button" id="clearHistoryBtn" class="btn btn-outline-danger btn-sm">Clear History</button>
+                        </div>
+                        <p id="historyEmpty" class="text-muted mb-0">No predictions saved yet.</p>
+                        <div id="historyList" class="list-group"></div>
+                    </div>
+
+                    <!-- Map Container -->
+                    <div class="mt-4 p-3 border rounded" aria-labelledby="mapHeading">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 id="mapHeading" class="fw-bold mb-0">Predicted Congestion Map</h5>
+                            <button type="button" id="updateMapBtn" class="btn btn-outline-primary btn-sm">Update Map</button>
+                        </div>
+                        <p id="mapSummary" class="text-muted mb-2">
+                            Select your conditions and update the map to compare the supported corridors.
+                        </p>
+                        <div id="trafficMap" aria-label="Map showing predicted traffic congestion"></div>
+                        <div class="small text-muted mt-2">
+                            <span class="me-3"><span class="legend-swatch legend-lower"></span>Lower congestion</span>
+                            <span><span class="legend-swatch legend-higher"></span>Higher congestion</span>
+                        </div>
+                    </div>
+
+                    <!-- Corridor Comparison -->
+                    <div class="mt-4 p-3 border rounded" aria-labelledby="comparisonHeading">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 id="comparisonHeading" class="fw-bold mb-0">Corridor Comparison</h5>
+                            <button type="button" id="compareCorridorsBtn" class="btn btn-outline-primary btn-sm">
+                                Compare Corridors
+                            </button>
+                        </div>
+                        <p id="comparisonSummary" class="text-muted mb-3">
+                            Compare Challenge and Iwo Road using the selected travel conditions.
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div id="challengeComparison" class="border rounded p-3 h-100">
+                                    <h6 class="fw-bold">Challenge</h6>
+                                    <p class="comparisonStatus text-muted mb-1">Not compared yet</p>
+                                    <p class="comparisonProbability mb-1">Peak probability: —</p>
+                                    <p class="comparisonAdvisory small mb-0"></p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div id="iwoRoadComparison" class="border rounded p-3 h-100">
+                                    <h6 class="fw-bold">Iwo Road</h6>
+                                    <p class="comparisonStatus text-muted mb-1">Not compared yet</p>
+                                    <p class="comparisonProbability mb-1">Peak probability: —</p>
+                                    <p class="comparisonAdvisory small mb-0"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        // Metrics modal handler
+        document.getElementById('metricsBtn').addEventListener('click', async function() {
+            try {
+                const res = await fetch('/metrics');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const metrics = data.metrics.models;
+                    let rows = '';
+                    for (const name in metrics) {
+                        const m = metrics[name];
+                        rows += `<tr><td>${name}</td><td>${m.accuracy}%</td><td>${m.precision}%</td><td>${m.recall}%</td><td>${m.f1_score}%</td></tr>`;
+                    }
+                    const modalHtml = `
+                        <div class="modal" tabindex="-1" style="display:block; background: rgba(0,0,0,0.4);">
+                          <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                              <div class="modal-header">
+                                <h5 class="modal-title">Model Performance & Metrics</h5>
+                                <button type="button" class="btn-close" id="closeMetrics"></button>
+                              </div>
+                              <div class="modal-body">
+                                <p>Best model: <strong>${data.metrics.best_model}</strong></p>
+                                <div class="table-responsive">
+                                  <table class="table table-sm">
+                                    <thead><tr><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1-Score</th></tr></thead>
+                                    <tbody>${rows}</tbody>
+                                  </table>
+                                </div>
+                              </div>
+                              <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" id="closeMetrics2">Close</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>`;
+
+                    const div = document.createElement('div');
+                    div.id = 'metricsModalContainer';
+                    div.innerHTML = modalHtml;
+                    document.body.appendChild(div);
+
+                    document.getElementById('closeMetrics').addEventListener('click', () => div.remove());
+                    document.getElementById('closeMetrics2').addEventListener('click', () => div.remove());
+                } else {
+                    alert('Could not load metrics: ' + data.message);
+                }
+            } catch (err) {
+                alert('Error fetching metrics: ' + err);
+            }
+        });
+
+        const HISTORY_KEY = 'trafficPredictionHistory';
+        const MAX_HISTORY_ITEMS = 10;
+
+        function getPredictionHistory() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+                return Array.isArray(stored) ? stored : [];
+            } catch (err) {
+                console.warn('Unable to read prediction history:', err);
+                return [];
+            }
+        }
+
+        function savePredictionToHistory(payload, result) {
+            const history = getPredictionHistory();
+            history.unshift({
+                id: Date.now(),
+                savedAt: new Date().toISOString(),
+                payload: payload,
+                prediction: result.prediction,
+                peak_probability: result.peak_probability,
+                traffic_light: result.traffic_light
+            });
+
+            try {
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
+            } catch (err) {
+                console.warn('Unable to save prediction history:', err);
+            }
+            renderPredictionHistory();
+        }
+
+        function renderPredictionHistory() {
+            const history = getPredictionHistory();
+            const historyList = document.getElementById('historyList');
+            const historyEmpty = document.getElementById('historyEmpty');
+            historyList.innerHTML = '';
+            historyEmpty.style.display = history.length ? 'none' : 'block';
+
+            history.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'list-group-item';
+
+                const header = document.createElement('div');
+                header.className = 'd-flex justify-content-between align-items-start gap-2';
+
+                const route = document.createElement('strong');
+                route.textContent = item.payload.corridor;
+
+                const time = document.createElement('small');
+                time.className = 'text-muted text-nowrap';
+                time.textContent = new Date(item.savedAt).toLocaleString();
+
+                const details = document.createElement('div');
+                details.className = 'small text-muted mt-1';
+                details.textContent = `${formatHour(item.payload.hour)} • ${getDayName(item.payload.day)} • ${item.payload.weather}`;
+
+                const result = document.createElement('div');
+                result.className = 'small mt-1';
+                result.textContent = `${item.prediction} — Peak probability: ${item.peak_probability}`;
+
+                header.append(route, time);
+                row.append(header, details, result);
+                historyList.appendChild(row);
+            });
+        }
+
+        function formatHour(hour24) {
+            const suffix = hour24 >= 12 ? 'PM' : 'AM';
+            const hour12 = hour24 % 12 || 12;
+            return `${hour12}:00 ${suffix}`;
+        }
+
+        function getDayName(day) {
+            return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][day] || 'Unknown day';
+        }
+
+        document.getElementById('clearHistoryBtn').addEventListener('click', function() {
+            localStorage.removeItem(HISTORY_KEY);
+            renderPredictionHistory();
+        });
+
+        renderPredictionHistory();
+
+        const ibadanBounds = L.latLngBounds(
+            [7.25, 3.78],
+            [7.55, 4.05]
+        );
+        const corridorLocations = {
+            'Challenge': [7.3777, 3.8841],
+            'Iwo Road': [7.3967, 3.9167],
+            'Bodija': [7.4319, 3.9056],
+            'Ojoo': [7.4655, 3.8981],
+            'Mokola': [7.4156, 3.8911]
+        };
+        const map = L.map('trafficMap', {
+            maxBounds: ibadanBounds,
+            maxBoundsViscosity: 1.0,
+            minZoom: 11,
+            maxZoom: 16
+        }).setView([7.3775, 3.9470], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        const mapLayers = [];
+        let userMarker = null;
+
+        function trafficColor(light) {
+            return light === 'red' ? '#dc3545' : '#0d6efd';
+        }
+
+        function getMapPayload(corridor) {
+            const hour12 = parseInt(document.getElementById("hour12").value, 10);
+            const ampm = document.getElementById("ampm").value;
+            let hour24 = hour12 % 12;
+            if (ampm === 'PM') hour24 += 12;
+            return {
+                corridor: corridor,
+                day: parseInt(document.getElementById("day").value, 10),
+                hour: hour24,
+                weather: document.getElementById("weather").value,
+                road_type: document.getElementById("road_type").value,
+                location_zone: document.getElementById("location_zone").value
+            };
+        }
+
+        async function updateTrafficMap() {
+            const updateButton = document.getElementById('updateMapBtn');
+            const mapSummary = document.getElementById('mapSummary');
+            updateButton.disabled = true;
+            mapSummary.textContent = 'Calculating predicted congestion for each corridor...';
+            mapLayers.splice(0).forEach(layer => map.removeLayer(layer));
+
+            try {
+                const predictions = await Promise.all(Object.keys(corridorLocations).map(async corridor => {
+                    const response = await fetch('/predict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(getMapPayload(corridor))
+                    });
+                    const result = await response.json();
+                    if (!response.ok || result.status !== 'success') {
+                        throw new Error(result.message || `Unable to predict ${corridor}`);
+                    }
+                    return { corridor, result };
+                }));
+
+                const ordered = predictions.slice().sort((a, b) =>
+                    parseFloat(a.result.peak_probability) - parseFloat(b.result.peak_probability)
+                );
+                const recommended = ordered[0];
+                const routePoints = predictions.map(item => corridorLocations[item.corridor]);
+
+                predictions.forEach(item => {
+                    const color = trafficColor(item.result.traffic_light);
+                    const marker = L.circleMarker(corridorLocations[item.corridor], {
+                        radius: 10, color: color, fillColor: color, fillOpacity: 0.85, weight: 2
+                    }).addTo(map);
+                    marker.bindPopup(`<strong>${item.corridor}</strong><br>${item.result.prediction}<br>Peak probability: ${item.result.peak_probability}`);
+                    mapLayers.push(marker);
+                });
+
+                const route = L.polyline(routePoints, {
+                    color: trafficColor(recommended.result.traffic_light),
+                    weight: 7,
+                    opacity: 0.8
+                }).addTo(map);
+                route.bindPopup(`<strong>Suggested corridor: ${recommended.corridor}</strong><br>Lowest predicted peak probability: ${recommended.result.peak_probability}`);
+                mapLayers.push(route);
+
+                mapSummary.innerHTML = `<strong>Recommended corridor: ${recommended.corridor}</strong> — lowest predicted peak probability at ${recommended.result.peak_probability}.`;
+            } catch (error) {
+                mapSummary.textContent = `Map update failed: ${error.message}`;
+            } finally {
+                updateButton.disabled = false;
+            }
+        }
+
+        function showUserLocation(position) {
+            const location = [position.coords.latitude, position.coords.longitude];
+            if (userMarker) map.removeLayer(userMarker);
+            userMarker = L.marker(location).addTo(map).bindPopup('<strong>Your location</strong>').openPopup();
+            map.setView(location, 13);
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showUserLocation, () => {
+                document.getElementById('mapSummary').textContent =
+                    'Location access unavailable; map centered on Ibadan.';
+            });
+        }
+        document.getElementById('updateMapBtn').addEventListener('click', updateTrafficMap);
+        setTimeout(() => map.invalidateSize(), 0);
+
+        function getCurrentConditions(corridor) {
+            const hour12 = parseInt(document.getElementById("hour12").value, 10);
+            const ampm = document.getElementById("ampm").value;
+            let hour24 = hour12 % 12;
+            if (ampm === 'PM') hour24 += 12;
+            return {
+                corridor: corridor,
+                day: parseInt(document.getElementById("day").value, 10),
+                hour: hour24,
+                weather: document.getElementById("weather").value,
+                road_type: document.getElementById("road_type").value,
+                location_zone: document.getElementById("location_zone").value
+            };
+        }
+
+        function renderComparisonCard(id, prediction) {
+            const card = document.getElementById(id);
+            const status = card.querySelector('.comparisonStatus');
+            const probability = card.querySelector('.comparisonProbability');
+            const advisory = card.querySelector('.comparisonAdvisory');
+            const isPeak = prediction.prediction === 'PEAK TRAFFIC PERIOD';
+
+            card.style.borderColor = trafficColor(prediction.traffic_light);
+            const statusIcon = prediction.traffic_light === 'red' ? '🔴' : '🔵';
+            status.textContent = `${statusIcon} ${prediction.prediction}`;
+            status.className = `comparisonStatus mb-1 ${isPeak ? 'text-danger' : 'text-success'}`;
+            probability.textContent = `Peak probability: ${prediction.peak_probability}`;
+            advisory.textContent = prediction.advisory;
+        }
+
+        async function compareCorridors() {
+            const button = document.getElementById('compareCorridorsBtn');
+            const summary = document.getElementById('comparisonSummary');
+            button.disabled = true;
+            summary.textContent = 'Comparing Challenge and Iwo Road...';
+
+            try {
+                const [challengeResponse, iwoRoadResponse] = await Promise.all([
+                    fetch('/predict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(getCurrentConditions('Challenge'))
+                    }),
+                    fetch('/predict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(getCurrentConditions('Iwo Road'))
+                    })
+                ]);
+                const challenge = await challengeResponse.json();
+                const iwoRoad = await iwoRoadResponse.json();
+
+                if (!challengeResponse.ok || challenge.status !== 'success') {
+                    throw new Error(challenge.message || 'Challenge prediction failed.');
+                }
+                if (!iwoRoadResponse.ok || iwoRoad.status !== 'success') {
+                    throw new Error(iwoRoad.message || 'Iwo Road prediction failed.');
+                }
+
+                renderComparisonCard('challengeComparison', challenge);
+                renderComparisonCard('iwoRoadComparison', iwoRoad);
+
+                const challengeProbability = parseFloat(challenge.peak_probability);
+                const iwoRoadProbability = parseFloat(iwoRoad.peak_probability);
+                const difference = Math.abs(challengeProbability - iwoRoadProbability).toFixed(1);
+                if (challengeProbability === iwoRoadProbability) {
+                    summary.innerHTML = `Challenge and Iwo Road have the same predicted peak congestion (${challenge.peak_probability}).`;
+                } else {
+                    const recommended = challengeProbability < iwoRoadProbability ? 'Challenge' : 'Iwo Road';
+                    summary.innerHTML = `<strong>${recommended}</strong> is recommended, with ${difference}% lower predicted peak congestion.`;
+                }
+            } catch (error) {
+                summary.textContent = `Comparison failed: ${error.message}`;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        document.getElementById('compareCorridorsBtn').addEventListener('click', compareCorridors);
+
+        document.getElementById("predictionForm").addEventListener("submit", async function(e) {
+            e.preventDefault();
+            
+            const hour12 = parseInt(document.getElementById("hour12").value, 10);
+            const ampm = document.getElementById("ampm").value;
+            let hour24 = hour12 % 12;
+            if (ampm === 'PM') hour24 += 12;
+
+            const payload = {
+                corridor: document.getElementById("corridor").value,
+                day: parseInt(document.getElementById("day").value),
+                hour: hour24,
+                weather: document.getElementById("weather").value,
+                road_type: document.getElementById("road_type").value,
+                location_zone: document.getElementById("location_zone").value
+            };
+
+            const response = await fetch("/predict", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') {
+                alert(result.message || 'The prediction could not be completed.');
+                return;
+            }
+
+            savePredictionToHistory(payload, result);
+            
+            const resultBox = document.getElementById("resultBox");
+            const statusBadge = document.getElementById("statusBadge");
             const probText = document.getElementById("probText");
             const advisoryText = document.getElementById("advisoryText");
             const alternativeText = document.getElementById('alternativeText');
@@ -21,7 +569,6 @@ git init     const statusBadge = document.getElementById("statusBadge");
             probText.innerText = `Peak Probability: ${result.peak_probability}`;
             advisoryText.innerText = result.advisory;
 
-            // Alternative suggestion
             if (result.alternative_suggestion) {
                 alternativeText.innerText = result.alternative_suggestion;
                 alternativeText.style.display = 'block';
@@ -30,7 +577,6 @@ git init     const statusBadge = document.getElementById("statusBadge");
                 alternativeText.style.display = 'none';
             }
 
-            // Peak window card
             if (result.peak_windows && Object.keys(result.peak_windows).length > 0) {
                 morningWindow.innerText = result.peak_windows.morning || '';
                 eveningWindow.innerText = result.peak_windows.evening || '';
@@ -40,15 +586,11 @@ git init     const statusBadge = document.getElementById("statusBadge");
                 peakWindowCard.style.display = 'none';
             }
 
-            // Traffic light indicator
-            if (result.traffic_light === 'red') {
-                trafficLight.innerText = '🔴';
-            } else {
-                trafficLight.innerText = '🔵';
-            }
+            trafficLight.innerText = result.traffic_light === 'red' ? '🔴' : '🔵';
 
+            // Auto-trigger map calculation on form submit
+            updateTrafficMap();
         });
-
     </script>
 </body>
 </html>
