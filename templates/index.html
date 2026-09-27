@@ -137,11 +137,11 @@
                     <!-- Map Container -->
                     <div class="mt-4 p-3 border rounded" aria-labelledby="mapHeading">
                         <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 id="mapHeading" class="fw-bold mb-0">Predicted Congestion Map</h5>
+                            <h5 id="mapHeading" class="fw-bold mb-0">Traffic Map</h5>
                             <button type="button" id="updateMapBtn" class="btn btn-outline-primary btn-sm">Update Map</button>
                         </div>
                         <p id="mapSummary" class="text-muted mb-2">
-                            Select your conditions and update the map to compare the supported corridors.
+                            {% if google_maps_api_key %}Google live traffic and model predictions for Ibadan. Update the map to compare corridors.{% else %}Predicted corridor congestion. Configure a Google Maps key to enable live traffic.{% endif %}
                         </p>
                         <div id="trafficMap" aria-label="Map showing predicted traffic congestion"></div>
                         <div class="small text-muted mt-2">
@@ -324,10 +324,8 @@
 
         renderPredictionHistory();
 
-        const ibadanBounds = L.latLngBounds(
-            [7.25, 3.78],
-            [7.55, 4.05]
-        );
+        const useGoogleMaps = {{ 'true' if google_maps_api_key else 'false' }};
+        const ibadanBounds = { north: 7.55, south: 7.25, east: 4.05, west: 3.78 };
         const corridorLocations = {
             'Challenge': [7.3777, 3.8841],
             'Iwo Road': [7.3967, 3.9167],
@@ -335,18 +333,70 @@
             'Ojoo': [7.4655, 3.8981],
             'Mokola': [7.4156, 3.8911]
         };
-        const map = L.map('trafficMap', {
-            maxBounds: ibadanBounds,
-            maxBoundsViscosity: 1.0,
-            minZoom: 11,
-            maxZoom: 16
-        }).setView([7.3775, 3.9470], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
+        let map = null;
         const mapLayers = [];
         let userMarker = null;
+        let googleTrafficLayer = null;
+        let googleMapsActive = false;
+
+        function initializeLeafletMap() {
+            map = L.map('trafficMap', {
+                maxBounds: L.latLngBounds([ibadanBounds.south, ibadanBounds.west], [ibadanBounds.north, ibadanBounds.east]),
+                maxBoundsViscosity: 1.0,
+                minZoom: 11,
+                maxZoom: 16
+            }).setView([7.3775, 3.9470], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            setTimeout(() => map.invalidateSize(), 0);
+        }
+
+        window.initGoogleTrafficMap = function() {
+            const ibadanGoogleBounds = {
+                north: ibadanBounds.north,
+                south: ibadanBounds.south,
+                east: ibadanBounds.east,
+                west: ibadanBounds.west
+            };
+            map = new google.maps.Map(document.getElementById('trafficMap'), {
+                center: { lat: 7.3775, lng: 3.9470 },
+                zoom: 12,
+                minZoom: 11,
+                maxZoom: 16,
+                restriction: { latLngBounds: ibadanGoogleBounds, strictBounds: true },
+                mapTypeControl: false,
+                streetViewControl: false
+            });
+            googleMapsActive = true;
+            googleTrafficLayer = new google.maps.TrafficLayer();
+            googleTrafficLayer.setMap(map);
+            document.getElementById('mapSummary').textContent =
+                'Google live traffic is shown beneath the model predictions. Update the map to compare Ibadan corridors.';
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showUserLocation, () => {
+                    document.getElementById('mapSummary').textContent =
+                        'Google live traffic is shown beneath model predictions. Location access was unavailable.';
+                });
+            }
+        };
+
+        window.initGoogleMapsLoadError = function() {
+            googleMapsActive = false;
+            initializeLeafletMap();
+            document.getElementById('mapSummary').textContent =
+                'Google Maps could not be loaded. Showing the predicted corridor map instead.';
+        };
+
+        if (!useGoogleMaps) initializeLeafletMap();
+
+        function removeMapLayers() {
+            mapLayers.splice(0).forEach(layer => {
+                if (googleMapsActive) layer.setMap(null);
+                else map.removeLayer(layer);
+            });
+        }
 
         function trafficColor(light) {
             return light === 'red' ? '#dc3545' : '#0d6efd';
@@ -370,9 +420,13 @@
         async function updateTrafficMap() {
             const updateButton = document.getElementById('updateMapBtn');
             const mapSummary = document.getElementById('mapSummary');
+            if (!map) {
+                mapSummary.textContent = 'The map is still loading. Please try again shortly.';
+                return;
+            }
             updateButton.disabled = true;
             mapSummary.textContent = 'Calculating predicted congestion for each corridor...';
-            mapLayers.splice(0).forEach(layer => map.removeLayer(layer));
+            removeMapLayers();
 
             try {
                 const predictions = await Promise.all(Object.keys(corridorLocations).map(async corridor => {
@@ -396,22 +450,59 @@
 
                 predictions.forEach(item => {
                     const color = trafficColor(item.result.traffic_light);
-                    const marker = L.circleMarker(corridorLocations[item.corridor], {
-                        radius: 10, color: color, fillColor: color, fillOpacity: 0.85, weight: 2
-                    }).addTo(map);
-                    marker.bindPopup(`<strong>${item.corridor}</strong><br>${item.result.prediction}<br>Peak probability: ${item.result.peak_probability}`);
+                    let marker;
+                    const popup = `<strong>${item.corridor}</strong><br>${item.result.prediction}<br>Peak probability: ${item.result.peak_probability}`;
+                    if (googleMapsActive) {
+                        marker = new google.maps.Marker({
+                            map,
+                            position: { lat: corridorLocations[item.corridor][0], lng: corridorLocations[item.corridor][1] },
+                            title: `${item.corridor}: ${item.result.prediction}`,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 8,
+                                fillColor: color,
+                                fillOpacity: 0.9,
+                                strokeColor: '#ffffff',
+                                strokeWeight: 2
+                            }
+                        });
+                        const infoWindow = new google.maps.InfoWindow({ content: popup });
+                        marker.addListener('click', () => infoWindow.open({ map, anchor: marker }));
+                    } else {
+                        marker = L.circleMarker(corridorLocations[item.corridor], {
+                            radius: 10, color: color, fillColor: color, fillOpacity: 0.85, weight: 2
+                        }).addTo(map);
+                        marker.bindPopup(popup);
+                    }
                     mapLayers.push(marker);
                 });
 
-                const route = L.polyline(routePoints, {
-                    color: trafficColor(recommended.result.traffic_light),
-                    weight: 7,
-                    opacity: 0.8
-                }).addTo(map);
-                route.bindPopup(`<strong>Suggested corridor: ${recommended.corridor}</strong><br>Lowest predicted peak probability: ${recommended.result.peak_probability}`);
+                let route;
+                const routePopup = `<strong>Suggested corridor: ${recommended.corridor}</strong><br>Lowest predicted peak probability: ${recommended.result.peak_probability}`;
+                if (googleMapsActive) {
+                    route = new google.maps.Polyline({
+                        map,
+                        path: routePoints.map(([lat, lng]) => ({ lat, lng })),
+                        strokeColor: trafficColor(recommended.result.traffic_light),
+                        strokeWeight: 6,
+                        strokeOpacity: 0.8
+                    });
+                    const routeInfo = new google.maps.InfoWindow({ content: routePopup });
+                    route.addListener('click', event => {
+                        routeInfo.setPosition(event.latLng);
+                        routeInfo.open({ map });
+                    });
+                } else {
+                    route = L.polyline(routePoints, {
+                        color: trafficColor(recommended.result.traffic_light),
+                        weight: 7,
+                        opacity: 0.8
+                    }).addTo(map);
+                    route.bindPopup(routePopup);
+                }
                 mapLayers.push(route);
 
-                mapSummary.innerHTML = `<strong>Recommended corridor: ${recommended.corridor}</strong> — lowest predicted peak probability at ${recommended.result.peak_probability}.`;
+                mapSummary.innerHTML = `${googleMapsActive ? 'Google live traffic and model predictions. ' : ''}<strong>Lowest predicted congestion: ${recommended.corridor}</strong> (${recommended.result.peak_probability}).`;
             } catch (error) {
                 mapSummary.textContent = `Map update failed: ${error.message}`;
             } finally {
@@ -420,20 +511,40 @@
         }
 
         function showUserLocation(position) {
-            const location = [position.coords.latitude, position.coords.longitude];
-            if (userMarker) map.removeLayer(userMarker);
-            userMarker = L.marker(location).addTo(map).bindPopup('<strong>Your location</strong>').openPopup();
-            map.setView(location, 13);
+            if (!map) return;
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            if (lat < ibadanBounds.south || lat > ibadanBounds.north ||
+                lng < ibadanBounds.west || lng > ibadanBounds.east) {
+                document.getElementById('mapSummary').textContent =
+                    'Your location is outside the Ibadan map area; the map remains centered on Ibadan.';
+                return;
+            }
+            if (userMarker) {
+                if (googleMapsActive) userMarker.setMap(null);
+                else map.removeLayer(userMarker);
+            }
+            if (googleMapsActive) {
+                userMarker = new google.maps.Marker({
+                    map,
+                    position: { lat, lng },
+                    title: 'Your location'
+                });
+                map.setCenter({ lat, lng });
+                map.setZoom(13);
+            } else {
+                userMarker = L.marker([lat, lng]).addTo(map).bindPopup('<strong>Your location</strong>').openPopup();
+                map.setView([lat, lng], 13);
+            }
         }
 
-        if (navigator.geolocation) {
+        if (!useGoogleMaps && navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(showUserLocation, () => {
                 document.getElementById('mapSummary').textContent =
                     'Location access unavailable; map centered on Ibadan.';
             });
         }
         document.getElementById('updateMapBtn').addEventListener('click', updateTrafficMap);
-        setTimeout(() => map.invalidateSize(), 0);
 
         function getCurrentConditions(corridor) {
             const hour12 = parseInt(document.getElementById("hour12").value, 10);
@@ -592,5 +703,10 @@
             updateTrafficMap();
         });
     </script>
+    {% if google_maps_api_key %}
+    <script async
+        src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&amp;loading=async&amp;callback=initGoogleTrafficMap"
+        onerror="window.initGoogleMapsLoadError()"></script>
+    {% endif %}
 </body>
 </html>

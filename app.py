@@ -1,12 +1,16 @@
 from flask import Flask, request, jsonify, render_template
 import joblib
 import pandas as pd
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 app = Flask(__name__)
 
 # Load the saved pipeline (preprocessor + model)
-BASE_DIR = Path(__file__).resolve().parent
 pipeline = joblib.load(BASE_DIR / "best_peak_model.pkl")
 
 CORRIDORS = ["Bodija", "Challenge", "Iwo Road", "Mokola", "Ojoo"]
@@ -36,7 +40,10 @@ METRICS_FILE = BASE_DIR / 'metrics_summary.json'
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return render_template(
+        "index.html",
+        google_maps_api_key=os.environ.get("GOOGLE_MAPS_API_KEY", "")
+    )
 
 @app.route("/predict", methods=["POST"])
 def predict():
